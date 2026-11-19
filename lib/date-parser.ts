@@ -21,6 +21,7 @@ const NATIVE_COUNTS: Record<string, number> = {
   열흘: 10,
 }
 const PARTICLE = '(?:에는|에도|에|까지|부터|엔|쯤|경|중으로|중|전까지)?'
+const MAX_RANGE_DAYS = 31
 
 function startOfDay(d: Date) {
   const n = new Date(d)
@@ -61,6 +62,7 @@ function resolveYearless(ref: Date, month: number, day: number) {
 
 type DateRule = {
   pattern: RegExp
+  dayOnly?: boolean
   resolve: (m: RegExpMatchArray, ref: Date) => Date | null
 }
 
@@ -175,6 +177,7 @@ const DATE_RULES: DateRule[] = [
   { pattern: /(오늘|금일|당일)/, resolve: (_m, ref) => startOfDay(ref) },
   {
     pattern: /(?<![\d월./-])(\d{1,2})\s*일(?!\s*(?:후|뒤|이후|전|간|동안|치|분))/,
+    dayOnly: true,
     resolve: (m, ref) => {
       const d = Number(m[1])
       if (d < 1 || d > 31) return null
@@ -199,7 +202,6 @@ function normalizeHour(hour: number, period?: string) {
   if (p === '밤') return hour === 12 ? 0 : hour < 12 && hour >= 6 ? hour + 12 : hour
   if (p === '점심' || p === '낮') return hour < 6 ? hour + 12 : hour
   if (p === '오전' || p === '아침' || p === '새벽' || p === 'am') return hour === 12 ? 0 : hour
-  // Without a period, 1-6 o'clock almost always means the afternoon in a business context.
   if (hour >= 1 && hour <= 6) return hour + 12
   return hour
 }
@@ -237,31 +239,94 @@ function cleanTitle(text: string, removed: string[]) {
   }
   return title
     .replace(/\s*(~|부터|까지)\s*/g, ' ')
+    .replace(/(?:^|\s)[,·]+(?:\s|$)/g, ' ')
     .replace(/\s{2,}/g, ' ')
-    .replace(/^[\s,.\-:]+|[\s,.\-:]+$/g, '')
+    .replace(/^[\s,.\-:~·]+|[\s,.\-:~·]+$/g, '')
     .trim()
 }
 
-export function parseSchedule(text: string, ref: Date = new Date()): ParsedSchedule {
-  const matches: string[] = []
-  let date: Date | null = null
-  let working = text
-
-  for (const rule of DATE_RULES) {
-    const m = working.match(rule.pattern)
-    if (!m) continue
-    const resolved = rule.resolve(m, ref)
-    if (!resolved) continue
-    date = resolved
-    matches.push(m[0].trim())
-    working = working.replace(m[0], ' ')
-    break
+function applyTimes(base: Date, times: TimeMatch[]): { start: Date; end?: Date; allDay: boolean } {
+  if (times.length === 0) {
+    return { start: startOfDay(base), allDay: true }
   }
 
-  const times = findTimes(working)
+  const start = new Date(base)
+  start.setHours(times[0].hour, times[0].minute, 0, 0)
+  let end: Date | undefined
+  if (times[1]) {
+    end = new Date(base)
+    let endHour = times[1].hour
+    if (endHour < times[0].hour && endHour + 12 < 24 && !/(오전|아침|새벽|am)/i.test(times[1].text)) {
+      endHour += 12
+    }
+    end.setHours(endHour, times[1].minute, 0, 0)
+    if (end <= start) end = undefined
+  }
+  return { start, end, allDay: false }
+}
+
+type DateMatch = {
+  date: Date
+  text: string
+  index: number
+  length: number
+  dayOnly: boolean
+  rawDay?: number
+}
+
+function findAllDates(text: string, ref: Date): { matches: DateMatch[]; remaining: string } {
+  let working = text
+  const found: DateMatch[] = []
+
+  for (const rule of DATE_RULES) {
+    const globalRegex = new RegExp(rule.pattern.source, 'g')
+    for (const m of working.matchAll(globalRegex)) {
+      if (m.index === undefined) continue
+      const resolved = rule.resolve(m, ref)
+      if (!resolved) continue
+      found.push({
+        date: resolved,
+        text: m[0].trim(),
+        index: m.index,
+        length: m[0].length,
+        dayOnly: Boolean(rule.dayOnly),
+        rawDay: rule.dayOnly ? Number(m[1]) : undefined,
+      })
+      working = working.slice(0, m.index) + ' '.repeat(m[0].length) + working.slice(m.index + m[0].length)
+    }
+  }
+
+  found.sort((a, b) => a.index - b.index)
+
+  // 앞선 날짜가 '12월 27일'이고 뒤가 '29일'처럼 일(day)만 적힌 경우 같은 달로 보정
+  for (let i = 1; i < found.length; i++) {
+    const prev = found[i - 1]
+    const curr = found[i]
+    if (curr.dayOnly && curr.rawDay !== undefined) {
+      const y = prev.date.getFullYear()
+      const mo = prev.date.getMonth() + 1
+      if (isValidDate(y, mo, curr.rawDay)) {
+        let candidate = new Date(y, mo - 1, curr.rawDay)
+        if (candidate.getTime() < prev.date.getTime()) {
+          candidate = new Date(y, mo, curr.rawDay)
+        }
+        curr.date = candidate
+      }
+    }
+  }
+
+  return { matches: found, remaining: working }
+}
+
+export function parseSchedule(text: string, ref: Date = new Date()): ParsedSchedule {
+  const { matches: dateMatches, remaining } = findAllDates(text, ref)
+  const firstDate = dateMatches[0] ?? null
+  const matches: string[] = firstDate ? [firstDate.text] : []
+
+  const times = findTimes(remaining)
   for (const t of times.slice(0, 2)) matches.push(t.text)
 
-  if (!date && times.length === 0) {
+  if (!firstDate && times.length === 0) {
     const chronoResult = chrono.parse(text, ref, { forwardDate: true })[0]
     if (chronoResult) {
       const start = chronoResult.start.date()
@@ -284,30 +349,33 @@ export function parseSchedule(text: string, ref: Date = new Date()): ParsedSched
     }
   }
 
-  const base = date ?? startOfDay(ref)
-  if (times.length === 0) {
-    return { start: base, allDay: true, matches, title: cleanTitle(text, matches) || text.trim(), recognized: true }
-  }
-
-  const start = new Date(base)
-  start.setHours(times[0].hour, times[0].minute, 0, 0)
-  let end: Date | undefined
-  if (times[1]) {
-    end = new Date(base)
-    let endHour = times[1].hour
-    if (endHour < times[0].hour && endHour + 12 < 24 && !/(오전|아침|새벽|am)/i.test(times[1].text)) {
-      endHour += 12
-    }
-    end.setHours(endHour, times[1].minute, 0, 0)
-    if (end <= start) end = undefined
-  }
-
+  const base = firstDate ? firstDate.date : startOfDay(ref)
+  const { start, end, allDay } = applyTimes(base, times)
   return {
     start,
     end,
-    allDay: false,
+    allDay,
     matches,
     title: cleanTitle(text, matches) || text.trim(),
     recognized: true,
   }
 }
+
+function parseSingleLine(line: string, ref: Date): ParsedSchedule[] {
+  const { matches: dateMatches, remaining } = findAllDates(line, ref)
+  if (dateMatches.length <= 1) {
+    return [parseSchedule(line, ref)]
+  }
+
+  const times = findTimes(remaining)
+  const allMatchTexts = [...dateMatches.map((d) => d.text), ...times.slice(0, 2).map((t) => t.text)]
+  const title = cleanTitle(line, allMatchTexts) || line.trim()
+
+  const expandedDates: Date[] = []
+  let i = 0
+  while (i < dateMatches.length) {
+    const curr = dateMatches[i]
+    const next = dateMatches[i + 1]
+
+    if (next) {
+      const between = line.slice(curr.index + curr.
