@@ -6,6 +6,7 @@ import { addDays, dayKey, formatTime, isSameDay, startOfWeek } from '@/lib/date-
 import { useSchedules, useTodosInRange } from '@/hooks/use-planner-data'
 import { CategoryBadges } from './category-badges'
 import { PeriodNav } from './period-nav'
+import { StatsBar } from './stats-bar'
 
 const WEEKDAY_LABELS = ['월', '화', '수', '목', '금', '토', '일']
 
@@ -38,6 +39,9 @@ export function WeekView({
         onToday={() => onAnchorChange(new Date())}
         todayLabel="이번 주"
       />
+
+      <StatsBar schedules={schedules ?? []} periodLabel="주간" />
+
       <div className="grid gap-3 md:grid-cols-7">
         {days.map((day, i) => {
           const key = dayKey(day)
