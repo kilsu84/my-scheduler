@@ -2,9 +2,19 @@
 
 import { useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, BellOff, LogOut } from 'lucide-react'
+import { Bell, BellOff, KeyRound, LogOut } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { authClient } from '@/lib/auth-client'
 import { formatFullDate, greeting } from '@/lib/date-utils'
@@ -60,10 +70,53 @@ export function PlannerApp({ userName }: { userName: string }) {
   const [anchor, setAnchor] = useState(() => new Date())
   const { permission, request } = useNotificationPermission()
 
+  const [pwOpen, setPwOpen] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [pwLoading, setPwLoading] = useState(false)
+
   async function handleSignOut() {
     await authClient.signOut()
     router.push('/sign-in')
     router.refresh()
+  }
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault()
+
+    if (newPassword.length < 8) {
+      toast.error('새 비밀번호는 8자 이상 입력해 주세요.')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('새 비밀번호가 서로 일치하지 않습니다.')
+      return
+    }
+
+    setPwLoading(true)
+    try {
+      const { error } = await authClient.changePassword({
+        currentPassword,
+        newPassword,
+        revokeOtherSessions: false,
+      })
+
+      if (error) {
+        toast.error(error.message || '현재 비밀번호가 올바르지 않습니다.')
+        return
+      }
+
+      toast.success('비밀번호가 변경되었습니다.')
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      setPwOpen(false)
+    } catch {
+      toast.error('비밀번호 변경 중 오류가 발생했습니다.')
+    } finally {
+      setPwLoading(false)
+    }
   }
 
   return (
@@ -109,6 +162,68 @@ export function PlannerApp({ userName }: { userName: string }) {
                 )}
               </Button>
             )}
+
+            <Dialog open={pwOpen} onOpenChange={setPwOpen}>
+              <DialogTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="비밀번호 변경" title="비밀번호 변경">
+                  <KeyRound className="size-4" aria-hidden="true" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>비밀번호 변경</DialogTitle>
+                  <DialogDescription>
+                    현재 비밀번호를 확인한 뒤 새 비밀번호(8자 이상)로 변경합니다.
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleChangePassword} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="current-password">현재 비밀번호</Label>
+                    <Input
+                      id="current-password"
+                      type="password"
+                      required
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="현재 비밀번호 입력"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-password">새 비밀번호</Label>
+                    <Input
+                      id="new-password"
+                      type="password"
+                      required
+                      minLength={8}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="8자 이상 입력"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm-password">새 비밀번호 확인</Label>
+                    <Input
+                      id="confirm-password"
+                      type="password"
+                      required
+                      minLength={8}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="새 비밀번호 다시 입력"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button type="button" variant="outline" onClick={() => setPwOpen(false)}>
+                      취소
+                    </Button>
+                    <Button type="submit" disabled={pwLoading}>
+                      {pwLoading ? '변경 중...' : '변경하기'}
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+
             <Button variant="ghost" size="icon" onClick={handleSignOut} aria-label="로그아웃" title="로그아웃">
               <LogOut className="size-4" aria-hidden="true" />
             </Button>
