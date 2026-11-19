@@ -2,7 +2,7 @@
 
 import { useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, BellOff, KeyRound, LogOut } from 'lucide-react'
+import { Bell, BellOff, Download, KeyRound, LogOut } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -18,6 +18,8 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { authClient } from '@/lib/auth-client'
 import { formatFullDate, greeting } from '@/lib/date-utils'
+import { listAllSchedules } from '@/app/actions/schedules'
+import { downloadSchedulesCsv } from '@/lib/export-csv'
 import { TodayView } from './today-view'
 import { DayView } from './day-view'
 import { WeekView } from './week-view'
@@ -25,10 +27,10 @@ import { MonthView } from './month-view'
 
 type View = 'today' | 'day' | 'week' | 'month'
 const VIEWS: { id: View; label: string }[] = [
-  { id: 'today', label: '오늘' },
-  { id: 'day', label: '일간' },
-  { id: 'week', label: '주간' },
-  { id: 'month', label: '월간' },
+  { id: 'today', label: '☀️ 오늘' },
+  { id: 'day', label: '📅 일간' },
+  { id: 'week', label: '📆 주간' },
+  { id: 'month', label: '🗓️ 월간' },
 ]
 
 function subscribeMinute(callback: () => void) {
@@ -81,6 +83,20 @@ export function PlannerApp({ userName }: { userName: string }) {
   function openDayView(date: Date) {
     setAnchor(date)
     setView('day')
+  }
+
+  async function handleExportAll() {
+    try {
+      const all = await listAllSchedules()
+      if (all.length === 0) {
+        toast.error('백업할 일정이 없습니다.')
+        return
+      }
+      downloadSchedulesCsv(all, '전체일정_백업')
+      toast.success(`전체 일정 ${all.length}건을 엑셀(CSV)로 백업했어요.`)
+    } catch {
+      toast.error('백업 중 오류가 발생했습니다.')
+    }
   }
 
   async function handleSignOut() {
@@ -144,7 +160,7 @@ export function PlannerApp({ userName }: { userName: string }) {
                 onClick={() => setView(v.id)}
                 aria-current={view === v.id ? 'page' : undefined}
                 className={cn(
-                  'rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/40 md:px-4',
+                  'rounded-full px-3 py-1.5 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/40 md:px-4',
                   view === v.id ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
@@ -169,6 +185,16 @@ export function PlannerApp({ userName }: { userName: string }) {
                 )}
               </Button>
             )}
+
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleExportAll}
+              aria-label="전체 일정 엑셀 백업"
+              title="전체 일정 엑셀 백업"
+            >
+              <Download className="size-4" aria-hidden="true" />
+            </Button>
 
             <Dialog open={pwOpen} onOpenChange={setPwOpen}>
               <DialogTrigger asChild>
