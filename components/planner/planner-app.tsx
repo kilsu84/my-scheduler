@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import { Bell, BellOff, Download, KeyRound, LogOut } from 'lucide-react'
 import { toast } from 'sonner'
@@ -33,6 +33,8 @@ const VIEWS: { id: View; label: string }[] = [
   { id: 'month', label: '🗓️ 월간' },
 ]
 
+const NOTIF_STORAGE_KEY = 'my-secretary-notif-enabled'
+
 function subscribeMinute(callback: () => void) {
   const id = window.setInterval(callback, 60_000)
   return () => window.clearInterval(id)
@@ -54,17 +56,49 @@ const getPermission = (): NotificationPermission | 'unsupported' =>
   'Notification' in window ? Notification.permission : 'unsupported'
 const getServerPermission = () => 'unsupported' as const
 
-function useNotificationPermission() {
+function useNotificationToggle() {
   const live = useSyncExternalStore(subscribeNoop, getPermission, getServerPermission)
   const [override, setOverride] = useState<NotificationPermission | null>(null)
+  const [enabled, setEnabled] = useState(true)
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem(NOTIF_STORAGE_KEY)
+    if (saved === 'false') setEnabled(false)
+  }, [])
+
   const permission = override ?? live
-  async function request() {
+  const isActive = permission === 'granted' && enabled
+
+  async function toggle() {
     if (!('Notification' in window)) return
-    const result = await Notification.requestPermission()
-    setOverride(result)
-    if (result === 'granted') toast.success('일정 알림을 켰어요. 시작 30분·10분 전에 알려드릴게요.')
+
+    if (permission === 'denied') {
+      toast.error('브라우저 설정에서 알림이 차단되어 있어요. 주소창 왼쪽 아이콘에서 허용으로 바꿔주세요.')
+      return
+    }
+
+    if (permission !== 'granted') {
+      const result = await Notification.requestPermission()
+      setOverride(result)
+      if (result === 'granted') {
+        setEnabled(true)
+        window.localStorage.setItem(NOTIF_STORAGE_KEY, 'true')
+        toast.success('일정 알림을 켰어요. 시작 30분·10분 전에 알려드릴게요.')
+      }
+      return
+    }
+
+    const next = !enabled
+    setEnabled(next)
+    window.localStorage.setItem(NOTIF_STORAGE_KEY, String(next))
+    if (next) {
+      toast.success('일정 알림을 켰어요.')
+    } else {
+      toast.info('일정 알림을 껐어요.')
+    }
   }
-  return { permission, request }
+
+  return { permission, isActive, toggle }
 }
 
 export function PlannerApp({ userName }: { userName: string }) {
@@ -72,7 +106,7 @@ export function PlannerApp({ userName }: { userName: string }) {
   const now = useSyncExternalStore<Date | null>(subscribeMinute, getNowSnapshot, getServerNow)
   const [view, setView] = useState<View>('today')
   const [anchor, setAnchor] = useState(() => new Date())
-  const { permission, request } = useNotificationPermission()
+  const { permission, isActive, toggle } = useNotificationToggle()
 
   const [pwOpen, setPwOpen] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
@@ -173,15 +207,14 @@ export function PlannerApp({ userName }: { userName: string }) {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={request}
-                disabled={permission === 'granted'}
-                aria-label={permission === 'granted' ? '알림 켜짐' : '알림 켜기'}
-                title={permission === 'granted' ? '알림 켜짐' : '알림 켜기'}
+                onClick={toggle}
+                aria-label={isActive ? '알림 끄기' : '알림 켜기'}
+                title={isActive ? '알림 켜짐 (클릭하여 끄기)' : '알림 꺼짐 (클릭하여 켜기)'}
               >
-                {permission === 'granted' ? (
+                {isActive ? (
                   <Bell className="size-4 text-gold-foreground" aria-hidden="true" />
                 ) : (
-                  <BellOff className="size-4" aria-hidden="true" />
+                  <BellOff className="size-4 text-muted-foreground" aria-hidden="true" />
                 )}
               </Button>
             )}
