@@ -97,15 +97,28 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
           </Button>
         </form>
 
-        <p className="text-center text-sm text-muted-foreground">
-          {isSignUp ? '이미 계정이 있으신가요? ' : '처음이신가요? '}
-          <Link
-            href={isSignUp ? '/sign-in' : '/sign-up'}
-            className="font-medium text-foreground underline-offset-4 hover:underline"
-          >
-            {isSignUp ? '로그인' : '계정 만들기'}
-          </Link>
-        </p>
+        <div className="flex flex-col gap-2 text-center text-sm text-muted-foreground">
+          <p>
+            {isSignUp ? '이미 계정이 있으신가요? ' : '처음이신가요? '}
+            <Link
+              href={isSignUp ? '/sign-in' : '/sign-up'}
+              className="font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              {isSignUp ? '로그인' : '계정 만들기'}
+            </Link>
+          </p>
+          {!isSignUp && (
+            <p>
+              비밀번호를 잊으셨나요?{' '}
+              <Link
+                href="/reset-password"
+                className="font-medium text-foreground underline-offset-4 hover:underline"
+              >
+                비밀번호 초기화
+              </Link>
+            </p>
+          )}
+        </div>
       </div>
     </main>
   )
