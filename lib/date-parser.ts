@@ -378,4 +378,52 @@ function parseSingleLine(line: string, ref: Date): ParsedSchedule[] {
     const next = dateMatches[i + 1]
 
     if (next) {
-      const between = line.slice(curr.index + curr.
+      const between = line.slice(curr.index + curr.length, next.index)
+      const isRange = /^\s*(?:~|-|부터|에서)\s*$/.test(between) || /~|부터/.test(between)
+      if (isRange && next.date.getTime() >= curr.date.getTime()) {
+        const diffDays = Math.round((startOfDay(next.date).getTime() - startOfDay(curr.date).getTime()) / 86_400_000)
+        if (diffDays <= MAX_RANGE_DAYS) {
+          for (let d = 0; d <= diffDays; d++) {
+            expandedDates.push(addDays(curr.date, d))
+          }
+          i += 2
+          continue
+        }
+      }
+    }
+
+    expandedDates.push(curr.date)
+    i += 1
+  }
+
+  // 같은 날짜 중복 제거
+  const seen = new Set<string>()
+  const uniqueDates = expandedDates.filter((d) => {
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
+  return uniqueDates.map((base) => {
+    const { start, end, allDay } = applyTimes(base, times)
+    return {
+      start,
+      end,
+      allDay,
+      matches: allMatchTexts,
+      title,
+      recognized: true,
+    }
+  })
+}
+
+export function parseSchedules(text: string, ref: Date = new Date()): ParsedSchedule[] {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+
+  if (lines.length === 0) return []
+  return lines.flatMap((line) => parseSingleLine(line, ref))
+}
