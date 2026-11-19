@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { authClient } from '@/lib/auth-client'
 import { formatFullDate, greeting } from '@/lib/date-utils'
+import { ALL_CATEGORIES } from '@/lib/categories'
 import { listAllSchedules } from '@/app/actions/schedules'
 import { downloadSchedulesCsv } from '@/lib/export-csv'
 import { TodayView } from './today-view'
@@ -106,6 +107,7 @@ export function PlannerApp({ userName }: { userName: string }) {
   const now = useSyncExternalStore<Date | null>(subscribeMinute, getNowSnapshot, getServerNow)
   const [view, setView] = useState<View>('today')
   const [anchor, setAnchor] = useState(() => new Date())
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const { permission, isActive, toggle } = useNotificationToggle()
 
   const [pwOpen, setPwOpen] = useState(false)
@@ -122,12 +124,15 @@ export function PlannerApp({ userName }: { userName: string }) {
   async function handleExportAll() {
     try {
       const all = await listAllSchedules()
-      if (all.length === 0) {
+      const target = selectedCategory
+        ? all.filter((s) => s.categories.includes(selectedCategory))
+        : all
+      if (target.length === 0) {
         toast.error('백업할 일정이 없습니다.')
         return
       }
-      downloadSchedulesCsv(all, '전체일정_백업')
-      toast.success(`전체 일정 ${all.length}건을 엑셀(CSV)로 백업했어요.`)
+      downloadSchedulesCsv(target, '전체일정_백업')
+      toast.success(`일정 ${target.length}건을 엑셀(CSV)로 백업했어요.`)
     } catch {
       toast.error('백업 중 오류가 발생했습니다.')
     }
@@ -298,6 +303,42 @@ export function PlannerApp({ userName }: { userName: string }) {
       </header>
 
       <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
+        <div
+          aria-label="카테고리 필터"
+          className="flex flex-wrap items-center gap-1.5 rounded-2xl border bg-card px-3.5 py-2.5 shadow-sm"
+        >
+          <button
+            type="button"
+            onClick={() => setSelectedCategory(null)}
+            className={cn(
+              'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+              selectedCategory === null
+                ? 'border-primary bg-primary text-primary-foreground shadow-xs'
+                : 'border-border bg-secondary/50 text-muted-foreground hover:text-foreground',
+            )}
+          >
+            전체
+          </button>
+          {ALL_CATEGORIES.map((cat) => {
+            const active = selectedCategory === cat.id
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setSelectedCategory(active ? null : cat.id)}
+                className={cn(
+                  'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                  active
+                    ? 'border-primary bg-primary text-primary-foreground shadow-xs'
+                    : 'border-border bg-secondary/50 text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {cat.label}
+              </button>
+            )
+          })}
+        </div>
+
         {!now && <div className="h-96 animate-pulse rounded-2xl border bg-card" aria-hidden="true" />}
         {now && view === 'today' && (
           <div className="flex flex-col gap-1">
@@ -307,13 +348,27 @@ export function PlannerApp({ userName }: { userName: string }) {
             </h1>
           </div>
         )}
-        {now && view === 'today' && <TodayView now={now} />}
-        {now && view === 'day' && <DayView anchor={anchor} onAnchorChange={setAnchor} now={now} />}
+        {now && view === 'today' && <TodayView now={now} selectedCategory={selectedCategory} />}
+        {now && view === 'day' && (
+          <DayView anchor={anchor} onAnchorChange={setAnchor} now={now} selectedCategory={selectedCategory} />
+        )}
         {now && view === 'week' && (
-          <WeekView anchor={anchor} onAnchorChange={setAnchor} now={now} onSelectDate={openDayView} />
+          <WeekView
+            anchor={anchor}
+            onAnchorChange={setAnchor}
+            now={now}
+            onSelectDate={openDayView}
+            selectedCategory={selectedCategory}
+          />
         )}
         {now && view === 'month' && (
-          <MonthView anchor={anchor} onAnchorChange={setAnchor} now={now} onSelectDate={openDayView} />
+          <MonthView
+            anchor={anchor}
+            onAnchorChange={setAnchor}
+            now={now}
+            onSelectDate={openDayView}
+            selectedCategory={selectedCategory}
+          />
         )}
       </main>
     </div>
