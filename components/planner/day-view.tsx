@@ -12,17 +12,25 @@ export function DayView({
   anchor,
   onAnchorChange,
   now,
+  selectedCategory,
 }: {
   anchor: Date
   onAnchorChange: (d: Date) => void
   now: Date
+  selectedCategory: string | null
 }) {
   const dayStart = useMemo(() => startOfDay(anchor), [anchor])
   const dayEnd = useMemo(() => addDays(dayStart, 1), [dayStart])
   const key = dayKey(dayStart)
 
-  const { data: schedules, isLoading } = useSchedules(dayStart, dayEnd)
+  const { data: rawSchedules, isLoading } = useSchedules(dayStart, dayEnd)
   const { data: todos } = useTodosInRange(key, key)
+
+  const schedules = useMemo(() => {
+    if (!rawSchedules) return []
+    if (!selectedCategory) return rawSchedules
+    return rawSchedules.filter((s) => s.categories.includes(selectedCategory))
+  }, [rawSchedules, selectedCategory])
 
   return (
     <section aria-label="일간 일정" className="flex flex-col gap-4">
@@ -34,25 +42,27 @@ export function DayView({
         todayLabel="오늘"
       />
 
-      <StatsBar schedules={schedules ?? []} periodLabel="일간" />
+      <StatsBar schedules={schedules} periodLabel="일간" />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex flex-col gap-2 rounded-2xl border bg-card p-5 shadow-sm">
           <div className="flex items-baseline justify-between">
             <h2 className="font-serif text-lg font-bold">상세 일정</h2>
-            <span className="text-sm text-muted-foreground tabular-nums">{schedules?.length ?? 0}건</span>
+            <span className="text-sm text-muted-foreground tabular-nums">{schedules.length}건</span>
           </div>
 
           {isLoading ? (
             <p className="py-8 text-center text-sm text-muted-foreground">불러오는 중…</p>
-          ) : schedules?.length ? (
+          ) : schedules.length ? (
             <ul className="flex flex-col divide-y">
               {schedules.map((s) => (
                 <ScheduleItem key={s.id} schedule={s} />
               ))}
             </ul>
           ) : (
-            <p className="py-8 text-center text-sm text-muted-foreground">이 날은 예정된 일정이 없습니다.</p>
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              {selectedCategory ? '선택한 카테고리의 일정이 없습니다.' : '이 날은 예정된 일정이 없습니다.'}
+            </p>
           )}
         </div>
 
