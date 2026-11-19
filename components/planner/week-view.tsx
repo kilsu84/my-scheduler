@@ -9,7 +9,17 @@ import { PeriodNav } from './period-nav'
 
 const WEEKDAY_LABELS = ['월', '화', '수', '목', '금', '토', '일']
 
-export function WeekView({ anchor, onAnchorChange, now }: { anchor: Date; onAnchorChange: (d: Date) => void; now: Date }) {
+export function WeekView({
+  anchor,
+  onAnchorChange,
+  now,
+  onSelectDate,
+}: {
+  anchor: Date
+  onAnchorChange: (d: Date) => void
+  now: Date
+  onSelectDate: (d: Date) => void
+}) {
   const weekStart = useMemo(() => startOfWeek(anchor), [anchor])
   const weekEnd = useMemo(() => addDays(weekStart, 7), [weekStart])
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
@@ -42,7 +52,12 @@ export function WeekView({ anchor, onAnchorChange, now }: { anchor: Date; onAnch
                 isToday && 'border-primary ring-1 ring-primary',
               )}
             >
-              <div className="flex items-baseline justify-between">
+              <button
+                type="button"
+                onClick={() => onSelectDate(day)}
+                className="flex items-baseline justify-between text-left hover:opacity-80"
+                title="일간 상세 보기"
+              >
                 <span className={cn('text-xs font-semibold', i >= 5 ? 'text-destructive' : 'text-muted-foreground')}>
                   {WEEKDAY_LABELS[i]}
                 </span>
@@ -54,22 +69,28 @@ export function WeekView({ anchor, onAnchorChange, now }: { anchor: Date; onAnch
                 >
                   {day.getDate()}
                 </span>
-              </div>
+              </button>
               {daySchedules.length === 0 && dayTodos.length === 0 && (
                 <p className="text-xs text-muted-foreground/70">일정 없음</p>
               )}
               <ul className="flex flex-col gap-1.5">
                 {daySchedules.map((s) => (
-                  <li
-                    key={s.id}
-                    className={cn('flex flex-col gap-1 rounded-lg bg-secondary p-2 text-xs', s.done && 'opacity-50')}
-                  >
-                    <span className="font-semibold tabular-nums">{s.allDay ? '종일' : formatTime(new Date(s.startAt))}</span>
-                    <span className={cn('text-pretty', s.done && 'line-through')}>
-                      {s.customerName ? `${s.customerName} · ` : ''}
-                      {s.title}
-                    </span>
-                    <CategoryBadges ids={s.categories} />
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      onClick={() => onSelectDate(day)}
+                      className={cn(
+                        'flex w-full flex-col gap-1 rounded-lg bg-secondary p-2 text-left text-xs transition-colors hover:bg-accent',
+                        s.done && 'opacity-50',
+                      )}
+                    >
+                      <span className="font-semibold tabular-nums">{s.allDay ? '종일' : formatTime(new Date(s.startAt))}</span>
+                      <span className={cn('text-pretty', s.done && 'line-through')}>
+                        {s.customerName ? `${s.customerName} · ` : ''}
+                        {s.title}
+                      </span>
+                      <CategoryBadges ids={s.categories} />
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -86,7 +107,7 @@ export function WeekView({ anchor, onAnchorChange, now }: { anchor: Date; onAnch
           )
         })}
       </div>
-      <p className="text-center text-xs text-muted-foreground">새 일정은 오늘 탭에서 입력할 수 있어요.</p>
+      <p className="text-center text-xs text-muted-foreground">일정이나 날짜를 클릭하면 일간 화면에서 상세 확인·수정할 수 있어요.</p>
     </section>
   )
 }
