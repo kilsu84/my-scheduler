@@ -6,6 +6,7 @@ import { addDays, dayKey, formatFullDate, startOfDay } from '@/lib/date-utils'
 import { useSchedules, useTodosInRange } from '@/hooks/use-planner-data'
 import { PeriodNav } from './period-nav'
 import { ScheduleItem } from './schedule-item'
+import { StatsBar } from './stats-bar'
 
 export function DayView({
   anchor,
@@ -32,6 +33,8 @@ export function DayView({
         onToday={() => onAnchorChange(new Date(now))}
         todayLabel="오늘"
       />
+
+      <StatsBar schedules={schedules ?? []} periodLabel="일간" />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex flex-col gap-2 rounded-2xl border bg-card p-5 shadow-sm">
