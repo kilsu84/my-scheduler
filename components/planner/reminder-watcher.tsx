@@ -6,6 +6,7 @@ import { formatTime } from '@/lib/date-utils'
 import type { ScheduleDTO } from '@/app/actions/schedules'
 
 const LEAD_MINUTES = [30, 10, 0]
+const NOTIF_STORAGE_KEY = 'my-secretary-notif-enabled'
 
 /** Raises in-app (and, when permitted, system) reminders while the app is open. */
 export function ReminderWatcher({ schedules }: { schedules: ScheduleDTO[] | undefined }) {
@@ -15,6 +16,10 @@ export function ReminderWatcher({ schedules }: { schedules: ScheduleDTO[] | unde
     if (!schedules?.length) return
 
     function check() {
+      if (typeof window !== 'undefined' && window.localStorage.getItem(NOTIF_STORAGE_KEY) === 'false') {
+        return
+      }
+
       const now = Date.now()
       for (const s of schedules!) {
         if (s.allDay || s.done) continue
