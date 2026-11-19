@@ -3,6 +3,9 @@ export type CategoryId =
   | 'work'
   | 'meeting'
   | 'personal'
+  | 'family'
+  | 'hobby'
+  | 'exercise'
   | 'gift'
   | 'delivery'
   | 'payment'
@@ -17,6 +20,9 @@ export const MAIN_CATEGORIES: Category[] = [
   { id: 'work', label: '업무', className: 'bg-secondary text-secondary-foreground border-border' },
   { id: 'meeting', label: '회의', className: 'bg-secondary text-secondary-foreground border-border' },
   { id: 'personal', label: '개인', className: 'bg-secondary text-secondary-foreground border-border' },
+  { id: 'family', label: '가족', className: 'bg-secondary text-secondary-foreground border-border' },
+  { id: 'hobby', label: '취미', className: 'bg-secondary text-secondary-foreground border-border' },
+  { id: 'exercise', label: '운동', className: 'bg-secondary text-secondary-foreground border-border' },
 ]
 
 export const CUSTOMER_SUBCATEGORIES: Category[] = [
