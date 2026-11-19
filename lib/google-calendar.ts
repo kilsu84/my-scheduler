@@ -157,6 +157,20 @@ export async function insertCalendarEvent(token: string, schedule: Schedule): Pr
   return data.id ?? null
 }
 
+export async function updateCalendarEvent(token: string, eventId: string, schedule: Schedule): Promise<boolean> {
+  const res = await fetch(`${getCalendarApiUrl()}/${encodeURIComponent(eventId)}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(buildEvent(schedule)),
+  })
+  if (!res.ok) {
+    const errText = await res.text()
+    console.error('[google-calendar] update failed:', res.status, errText)
+    return false
+  }
+  return true
+}
+
 export async function deleteCalendarEvent(token: string, eventId: string) {
   const res = await fetch(`${getCalendarApiUrl()}/${encodeURIComponent(eventId)}`, {
     method: 'DELETE',
