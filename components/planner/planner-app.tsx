@@ -19,12 +19,14 @@ import { cn } from '@/lib/utils'
 import { authClient } from '@/lib/auth-client'
 import { formatFullDate, greeting } from '@/lib/date-utils'
 import { TodayView } from './today-view'
+import { DayView } from './day-view'
 import { WeekView } from './week-view'
 import { MonthView } from './month-view'
 
-type View = 'today' | 'week' | 'month'
+type View = 'today' | 'day' | 'week' | 'month'
 const VIEWS: { id: View; label: string }[] = [
   { id: 'today', label: '오늘' },
+  { id: 'day', label: '일간' },
   { id: 'week', label: '주간' },
   { id: 'month', label: '월간' },
 ]
@@ -75,6 +77,11 @@ export function PlannerApp({ userName }: { userName: string }) {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [pwLoading, setPwLoading] = useState(false)
+
+  function openDayView(date: Date) {
+    setAnchor(date)
+    setView('day')
+  }
 
   async function handleSignOut() {
     await authClient.signOut()
@@ -137,7 +144,7 @@ export function PlannerApp({ userName }: { userName: string }) {
                 onClick={() => setView(v.id)}
                 aria-current={view === v.id ? 'page' : undefined}
                 className={cn(
-                  'rounded-full px-4 py-1.5 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/40',
+                  'rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/40 md:px-4',
                   view === v.id ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
@@ -242,8 +249,13 @@ export function PlannerApp({ userName }: { userName: string }) {
           </div>
         )}
         {now && view === 'today' && <TodayView now={now} />}
-        {now && view === 'week' && <WeekView anchor={anchor} onAnchorChange={setAnchor} now={now} />}
-        {now && view === 'month' && <MonthView anchor={anchor} onAnchorChange={setAnchor} now={now} />}
+        {now && view === 'day' && <DayView anchor={anchor} onAnchorChange={setAnchor} now={now} />}
+        {now && view === 'week' && (
+          <WeekView anchor={anchor} onAnchorChange={setAnchor} now={now} onSelectDate={openDayView} />
+        )}
+        {now && view === 'month' && (
+          <MonthView anchor={anchor} onAnchorChange={setAnchor} now={now} onSelectDate={openDayView} />
+        )}
       </main>
     </div>
   )
