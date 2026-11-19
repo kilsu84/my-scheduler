@@ -9,6 +9,7 @@ import { useSchedules, useTodosInRange } from '@/hooks/use-planner-data'
 import { getCategory } from '@/lib/categories'
 import { PeriodNav } from './period-nav'
 import { ScheduleItem } from './schedule-item'
+import { StatsBar } from './stats-bar'
 
 const WEEKDAY_LABELS = ['월', '화', '수', '목', '금', '토', '일']
 
@@ -62,6 +63,9 @@ export function MonthView({
           }}
           todayLabel="이번 달"
         />
+
+        <StatsBar schedules={schedules ?? []} periodLabel="월간" />
+
         <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
           <div className="grid grid-cols-7 border-b bg-secondary/60">
             {WEEKDAY_LABELS.map((w, i) => (
