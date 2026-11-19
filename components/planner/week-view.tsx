@@ -15,18 +15,26 @@ export function WeekView({
   onAnchorChange,
   now,
   onSelectDate,
+  selectedCategory,
 }: {
   anchor: Date
   onAnchorChange: (d: Date) => void
   now: Date
   onSelectDate: (d: Date) => void
+  selectedCategory: string | null
 }) {
   const weekStart = useMemo(() => startOfWeek(anchor), [anchor])
   const weekEnd = useMemo(() => addDays(weekStart, 7), [weekStart])
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
 
-  const { data: schedules } = useSchedules(weekStart, weekEnd)
+  const { data: rawSchedules } = useSchedules(weekStart, weekEnd)
   const { data: todos } = useTodosInRange(dayKey(weekStart), dayKey(addDays(weekStart, 6)))
+
+  const schedules = useMemo(() => {
+    if (!rawSchedules) return []
+    if (!selectedCategory) return rawSchedules
+    return rawSchedules.filter((s) => s.categories.includes(selectedCategory))
+  }, [rawSchedules, selectedCategory])
 
   const label = `${weekStart.getMonth() + 1}월 ${weekStart.getDate()}일 – ${addDays(weekStart, 6).getMonth() + 1}월 ${addDays(weekStart, 6).getDate()}일`
 
@@ -40,12 +48,12 @@ export function WeekView({
         todayLabel="이번 주"
       />
 
-      <StatsBar schedules={schedules ?? []} periodLabel="주간" />
+      <StatsBar schedules={schedules} periodLabel="주간" />
 
       <div className="grid gap-3 md:grid-cols-7">
         {days.map((day, i) => {
           const key = dayKey(day)
-          const daySchedules = schedules?.filter((s) => dayKey(new Date(s.startAt)) === key) ?? []
+          const daySchedules = schedules.filter((s) => dayKey(new Date(s.startAt)) === key)
           const dayTodos = todos?.filter((t) => t.dueDate === key) ?? []
           const isToday = isSameDay(day, now)
           return (
