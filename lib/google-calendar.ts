@@ -1,57 +1,89 @@
 import 'server-only'
 
-import {
-  getToken,
-  startAuthorization,
-  UserAuthorizationRequiredError,
-  NoValidTokenError,
-  type ConnectTokenParams,
-} from '@vercel/connect'
-import { headers } from 'next/headers'
+import crypto from 'crypto'
 import { categoryLabels } from '@/lib/categories'
 import type { Schedule } from '@/lib/db/schema'
 
-const GOOGLE_CONNECTOR_UID = 'google/my-secretary-calendar'
-const CALENDAR_SCOPES = ['https://www.googleapis.com/auth/calendar.events']
-const CALENDAR_API = 'https://www.googleapis.com/calendar/v3/calendars/primary/events'
+const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events'
+const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 export const APP_TIME_ZONE = 'Asia/Seoul'
-
-function tokenParams(userId: string): ConnectTokenParams {
-  return { subject: { type: 'user', id: userId }, scopes: CALENDAR_SCOPES }
-}
 
 export type GoogleStatus = 'connected' | 'authorization_required' | 'unavailable'
 
+function getCalendarApiUrl() {
+  const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary'
+  return `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`
+}
+
+function base64UrlEncode(input: string | Buffer) {
+  return Buffer.from(input)
+    .toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+}
+
 export async function getCalendarToken(
-  userId: string,
+  _userId: string,
 ): Promise<{ status: 'connected'; token: string } | { status: Exclude<GoogleStatus, 'connected'> }> {
+  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
+  const rawPrivateKey = process.env.GOOGLE_PRIVATE_KEY
+
+  if (!clientEmail || !rawPrivateKey) {
+    return { status: 'unavailable' }
+  }
+
   try {
-    const token = await getToken(GOOGLE_CONNECTOR_UID, tokenParams(userId))
-    return { status: 'connected', token }
-  } catch (error) {
-    if (error instanceof UserAuthorizationRequiredError || error instanceof NoValidTokenError) {
-      return { status: 'authorization_required' }
+    const privateKey = rawPrivateKey.replace(/\\n/g, '\n')
+    const now = Math.floor(Date.now() / 1000)
+
+    const header = base64UrlEncode(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
+    const claim = base64UrlEncode(
+      JSON.stringify({
+        iss: clientEmail,
+        scope: CALENDAR_SCOPE,
+        aud: TOKEN_URL,
+        exp: now + 3600,
+        iat: now,
+      }),
+    )
+
+    const unsignedToken = `${header}.${claim}`
+    const signature = crypto
+      .createSign('RSA-SHA256')
+      .update(unsignedToken)
+      .end()
+      .sign(privateKey)
+
+    const jwt = `${unsignedToken}.${base64UrlEncode(signature)}`
+
+    const res = await fetch(TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        assertion: jwt,
+      }),
+    })
+
+    if (!res.ok) {
+      const errText = await res.text()
+      console.error('[google-calendar] token exchange failed:', res.status, errText)
+      return { status: 'unavailable' }
     }
+
+    const data = (await res.json()) as { access_token?: string }
+    if (!data.access_token) return { status: 'unavailable' }
+
+    return { status: 'connected', token: data.access_token }
+  } catch (error) {
     console.error('[google-calendar] token lookup failed:', error instanceof Error ? error.message : error)
     return { status: 'unavailable' }
   }
 }
 
-async function getOrigin(): Promise<string> {
-  if (process.env.NODE_ENV !== 'production' && process.env.V0_RUNTIME_URL) return process.env.V0_RUNTIME_URL
-  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
-  const h = await headers()
-  const host = h.get('x-forwarded-host') ?? h.get('host')
-  return `${h.get('x-forwarded-proto') ?? 'https'}://${host}`
-}
-
-export async function startCalendarAuthorization(userId: string) {
-  const origin = await getOrigin()
-  const { url } = await startAuthorization(GOOGLE_CONNECTOR_UID, tokenParams(userId), {
-    callbackUrl: `${origin}/?google=connected`,
-  })
-  return url
+export async function startCalendarAuthorization(_userId: string) {
+  return '/'
 }
 
 function toSeoulDate(date: Date) {
@@ -111,13 +143,14 @@ function buildEvent(schedule: Schedule) {
 }
 
 export async function insertCalendarEvent(token: string, schedule: Schedule): Promise<string | null> {
-  const res = await fetch(CALENDAR_API, {
+  const res = await fetch(getCalendarApiUrl(), {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(buildEvent(schedule)),
   })
   if (!res.ok) {
-    console.error('[google-calendar] insert failed:', res.status)
+    const errText = await res.text()
+    console.error('[google-calendar] insert failed:', res.status, errText)
     return null
   }
   const data = (await res.json()) as { id?: string }
@@ -125,7 +158,7 @@ export async function insertCalendarEvent(token: string, schedule: Schedule): Pr
 }
 
 export async function deleteCalendarEvent(token: string, eventId: string) {
-  const res = await fetch(`${CALENDAR_API}/${encodeURIComponent(eventId)}`, {
+  const res = await fetch(`${getCalendarApiUrl()}/${encodeURIComponent(eventId)}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   })
