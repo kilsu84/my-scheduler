@@ -226,3 +226,12 @@ export async function countUnsynced(): Promise<number> {
     .where(and(eq(schedules.userId, userId), ne(schedules.syncStatus, 'synced')))
   return rows.length
 }
+export async function listAllSchedules(): Promise<ScheduleDTO[]> {
+  const userId = await getUserId()
+  const rows = await db
+    .select()
+    .from(schedules)
+    .where(eq(schedules.userId, userId))
+    .orderBy(asc(schedules.startAt))
+  return rows.map(toDTO)
+}
