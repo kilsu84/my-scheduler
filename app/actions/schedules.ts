@@ -5,7 +5,12 @@ import { db } from '@/lib/db'
 import { schedules, type Schedule } from '@/lib/db/schema'
 import { getUserId } from '@/lib/session'
 import { VALID_CATEGORY_IDS } from '@/lib/categories'
-import { deleteCalendarEvent, getCalendarToken, insertCalendarEvent } from '@/lib/google-calendar'
+import {
+  deleteCalendarEvent,
+  getCalendarToken,
+  insertCalendarEvent,
+  updateCalendarEvent,
+} from '@/lib/google-calendar'
 
 export type ScheduleDTO = Omit<Schedule, 'startAt' | 'endAt' | 'createdAt' | 'userId'> & {
   startAt: string
@@ -59,6 +64,10 @@ export type CreateScheduleInput = {
   allDay: boolean
 }
 
+export type UpdateScheduleInput = CreateScheduleInput & {
+  id: number
+}
+
 export type CreateScheduleResult =
   | { ok: true; schedule: ScheduleDTO; google: 'synced' | 'authorization_required' | 'unavailable' | 'failed' }
   | { ok: false; error: string }
@@ -106,6 +115,62 @@ export async function createSchedule(input: CreateScheduleInput): Promise<Create
     .returning()
 
   return { ok: true, schedule: toDTO(updated), google: eventId ? 'synced' : 'failed' }
+}
+
+export async function updateSchedule(input: UpdateScheduleInput): Promise<CreateScheduleResult> {
+  const userId = await getUserId()
+
+  const rawText = String(input.rawText ?? '').trim().slice(0, 1000)
+  const title = String(input.title ?? '').trim().slice(0, 300) || rawText.slice(0, 300)
+  const customerName = input.customerName ? String(input.customerName).trim().slice(0, 80) : null
+  const categories = Array.isArray(input.categories)
+    ? [...new Set(input.categories.filter((c) => typeof c === 'string' && VALID_CATEGORY_IDS.has(c)))]
+    : []
+  const startAt = parseDate(input.startAt)
+  const endAt = input.endAt ? parseDate(input.endAt) : null
+
+  if (!title) return { ok: false, error: '제목을 입력해 주세요.' }
+  if (!startAt) return { ok: false, error: '날짜를 확인해 주세요.' }
+  if (endAt && endAt <= startAt) return { ok: false, error: '종료 시간이 시작 시간보다 빨라요.' }
+
+  const [row] = await db
+    .update(schedules)
+    .set({
+      rawText: rawText || title,
+      title,
+      customerName: customerName || null,
+      categories,
+      startAt,
+      endAt,
+      allDay: Boolean(input.allDay),
+    })
+    .where(and(eq(schedules.id, Number(input.id)), eq(schedules.userId, userId)))
+    .returning()
+
+  if (!row) return { ok: false, error: '일정을 찾을 수 없습니다.' }
+
+  const calendar = await getCalendarToken(userId)
+  if (calendar.status !== 'connected') {
+    return { ok: true, schedule: toDTO(row), google: calendar.status }
+  }
+
+  let syncOk = false
+  let eventId = row.googleEventId
+
+  if (eventId) {
+    syncOk = await updateCalendarEvent(calendar.token, eventId, row)
+  } else {
+    eventId = await insertCalendarEvent(calendar.token, row)
+    syncOk = Boolean(eventId)
+  }
+
+  const [updated] = await db
+    .update(schedules)
+    .set({ googleEventId: eventId, syncStatus: syncOk ? 'synced' : 'failed' })
+    .where(and(eq(schedules.id, row.id), eq(schedules.userId, userId)))
+    .returning()
+
+  return { ok: true, schedule: toDTO(updated), google: syncOk ? 'synced' : 'failed' }
 }
 
 export async function setScheduleDone(id: number, done: boolean) {
