@@ -18,11 +18,13 @@ export function MonthView({
   onAnchorChange,
   now,
   onSelectDate,
+  selectedCategory,
 }: {
   anchor: Date
   onAnchorChange: (d: Date) => void
   now: Date
   onSelectDate: (d: Date) => void
+  selectedCategory: string | null
 }) {
   const monthStart = useMemo(() => startOfMonth(anchor), [anchor])
   const gridStart = useMemo(() => startOfWeek(monthStart), [monthStart])
@@ -30,12 +32,18 @@ export function MonthView({
   const gridEnd = useMemo(() => addDays(gridStart, 42), [gridStart])
   const [selected, setSelected] = useState<Date>(now)
 
-  const { data: schedules } = useSchedules(gridStart, gridEnd)
+  const { data: rawSchedules } = useSchedules(gridStart, gridEnd)
   const { data: todos } = useTodosInRange(dayKey(gridStart), dayKey(addDays(gridStart, 41)))
 
+  const schedules = useMemo(() => {
+    if (!rawSchedules) return []
+    if (!selectedCategory) return rawSchedules
+    return rawSchedules.filter((s) => s.categories.includes(selectedCategory))
+  }, [rawSchedules, selectedCategory])
+
   const byDay = useMemo(() => {
-    const map = new Map<string, NonNullable<typeof schedules>>()
-    for (const s of schedules ?? []) {
+    const map = new Map<string, typeof schedules>()
+    for (const s of schedules) {
       const key = dayKey(new Date(s.startAt))
       map.set(key, [...(map.get(key) ?? []), s])
     }
@@ -64,7 +72,7 @@ export function MonthView({
           todayLabel="이번 달"
         />
 
-        <StatsBar schedules={schedules ?? []} periodLabel="월간" />
+        <StatsBar schedules={schedules} periodLabel="월간" />
 
         <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
           <div className="grid grid-cols-7 border-b bg-secondary/60">
@@ -161,7 +169,9 @@ export function MonthView({
             ))}
           </ul>
         ) : (
-          <p className="py-4 text-sm text-muted-foreground">이 날은 일정이 없습니다.</p>
+          <p className="py-4 text-sm text-muted-foreground">
+            {selectedCategory ? '선택한 카테고리의 일정이 없습니다.' : '이 날은 일정이 없습니다.'}
+          </p>
         )}
         {selectedTodos.length > 0 && (
           <div className="flex flex-col gap-1 border-t pt-3">
